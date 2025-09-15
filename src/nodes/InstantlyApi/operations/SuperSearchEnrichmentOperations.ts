@@ -1,11 +1,12 @@
 import { IExecuteFunctions, NodeOperationError } from 'n8n-workflow';
 import { instantlyApiRequest } from '../../generic.functions';
 import { paginateInstantlyApi } from '../functions/paginationHelpers';
+import { getResourceLocatorValue } from '../functions/resourceLocatorHelpers';
 
 /**
  * SuperSearch Enrichment operations handler
  * NEW FEATURE: Added September 4, 2025
- * 
+ *
  * SuperSearch Enrichments provide AI-powered lead enrichment with:
  * - 450M+ contact database
  * - Waterfall enrichment from 5+ providers
@@ -23,140 +24,202 @@ export class SuperSearchEnrichmentOperations {
 		const enrichmentSettings = context.getNodeParameter('enrichmentSettings', itemIndex, {}) as any;
 		const additionalFields = context.getNodeParameter('additionalFields', itemIndex, {}) as any;
 
+		// Build the request body according to API specification
 		const body: any = {
-			name: name.trim(),
+			// Required enrichment payload with 7 boolean enrichment types
+			enrichment_payload: {
+				work_email_enrichment: enrichmentSettings.workEmailEnrichment ?? true,
+				fully_enriched_profile: enrichmentSettings.fullyEnrichedProfile ?? true,
+				email_verification: enrichmentSettings.emailVerification ?? false,
+				joblisting: enrichmentSettings.jobListing ?? true,
+				technologies: enrichmentSettings.technologies ?? true,
+				news: enrichmentSettings.news ?? true,
+				funding: enrichmentSettings.funding ?? true,
+			},
+
+			// Proper search filters structure as nested object
+			search_filters: {
+				locations: searchFilters.locations || [],
+				department: searchFilters.department || [],
+				level: searchFilters.level || [],
+				employeeCount: searchFilters.employeeCount || [],
+				revenue: searchFilters.revenue || [],
+				news: searchFilters.news || [],
+				title: searchFilters.title || {},
+				name: searchFilters.name || [],
+				companyName: searchFilters.companyName || {},
+				lookAlike: searchFilters.lookAlike || '',
+				keywordFilter: searchFilters.keywordFilter || {},
+				industry: searchFilters.industry || {},
+				domains: searchFilters.domains || [],
+				fundingType: searchFilters.fundingType || [],
+				skipOwnedLeads: searchFilters.skipOwnedLeads ?? true,
+				showOneLeadPerCompany: searchFilters.showOneLeadPerCompany ?? true,
+			},
+
+			// Correct field names per API specification
+			search_name: name.trim(),
+			limit: additionalFields.maxResults || 100,
 		};
 
-		// Add search filters
-		if (searchFilters.location) {
-			body.location = searchFilters.location;
+		// Add required fields
+		if (additionalFields.resourceId) {
+			body.resource_id = additionalFields.resourceId;
 		}
-		if (searchFilters.jobTitles && searchFilters.jobTitles.length > 0) {
-			body.job_titles = searchFilters.jobTitles;
-		}
-		if (searchFilters.companies && searchFilters.companies.length > 0) {
-			body.companies = searchFilters.companies;
-		}
-		if (searchFilters.industries && searchFilters.industries.length > 0) {
-			body.industries = searchFilters.industries;
+		if (additionalFields.resourceType !== undefined) {
+			body.resource_type = additionalFields.resourceType;
 		}
 
-		// Add enrichment settings
-		if (enrichmentSettings.enableWaterfallEnrichment !== undefined) {
-			body.enable_waterfall_enrichment = enrichmentSettings.enableWaterfallEnrichment;
+		// Add optional fields
+		if (additionalFields.listName) {
+			body.list_name = additionalFields.listName;
 		}
-		if (enrichmentSettings.enableAiEnrichment !== undefined) {
-			body.enable_ai_enrichment = enrichmentSettings.enableAiEnrichment;
+		if (additionalFields.autoUpdate !== undefined) {
+			body.auto_update = additionalFields.autoUpdate;
 		}
-		if (enrichmentSettings.aiModel) {
-			body.ai_model = enrichmentSettings.aiModel;
-		}
-		if (enrichmentSettings.aiPrompt) {
-			body.ai_prompt = enrichmentSettings.aiPrompt;
+		if (additionalFields.skipRowsWithoutEmail !== undefined) {
+			body.skip_rows_without_email = additionalFields.skipRowsWithoutEmail;
 		}
 
-		// Add additional fields
-		if (additionalFields.maxResults) {
-			body.max_results = additionalFields.maxResults;
-		}
-		if (additionalFields.enableEmailVerification !== undefined) {
-			body.enable_email_verification = additionalFields.enableEmailVerification;
-		}
-		if (additionalFields.enableCompanyIntelligence !== undefined) {
-			body.enable_company_intelligence = additionalFields.enableCompanyIntelligence;
-		}
-
-		return await instantlyApiRequest.call(context, 'POST', '/api/v2/supersearch-enrichment', body);
+		// Make API request and return properly formatted n8n items
+		const response = await instantlyApiRequest.call(context, 'POST', '/api/v2/supersearch-enrichment', body);
+		return [{ json: response }];
 	}
 
 	/**
 	 * Get a SuperSearch enrichment by resource ID
 	 */
 	static async get(context: IExecuteFunctions, itemIndex: number): Promise<any> {
-		const resourceId = context.getNodeParameter('resourceId', itemIndex) as string;
-		return await instantlyApiRequest.call(context, 'GET', `/api/v2/supersearch-enrichment/${resourceId}`);
+		const resourceIdLocator = context.getNodeParameter('resourceId', itemIndex) as any;
+		const resourceId = getResourceLocatorValue(resourceIdLocator);
+		const getAllEnrichments = context.getNodeParameter('getAllEnrichments', itemIndex, false) as boolean;
+
+		// Add query parameters if getting all enrichments
+		const queryParams = getAllEnrichments ? { all: true } : {};
+
+		const response = await instantlyApiRequest.call(context, 'GET', `/api/v2/supersearch-enrichment/${resourceId}`, {}, queryParams);
+		return [{ json: response }];
 	}
 
 	/**
 	 * Run a SuperSearch enrichment
 	 */
 	static async run(context: IExecuteFunctions, itemIndex: number): Promise<any> {
-		const resourceId = context.getNodeParameter('resourceId', itemIndex) as string;
-		const runSettings = context.getNodeParameter('runSettings', itemIndex, {}) as any;
+		const enrichmentIdLocator = context.getNodeParameter('enrichmentId', itemIndex) as any;
+		const enrichmentId = getResourceLocatorValue(enrichmentIdLocator);
+		const runOptions = context.getNodeParameter('runOptions', itemIndex, {}) as any;
 
 		const body: any = {
-			resource_id: resourceId,
+			enrichment_id: enrichmentId,
 		};
 
-		// Add run settings
-		if (runSettings.priority) {
-			body.priority = runSettings.priority;
+		// Add run options
+		if (runOptions.leadIds && runOptions.leadIds.length > 0) {
+			body.lead_ids = runOptions.leadIds;
 		}
-		if (runSettings.webhookUrl) {
-			body.webhook_url = runSettings.webhookUrl;
+		if (runOptions.enrichmentType) {
+			body.enrichment_type = runOptions.enrichmentType;
+		}
+		if (runOptions.limit) {
+			body.limit = runOptions.limit;
 		}
 
-		return await instantlyApiRequest.call(context, 'POST', '/api/v2/supersearch-enrichment/run', body);
+		const response = await instantlyApiRequest.call(context, 'POST', '/api/v2/supersearch-enrichment/run', body);
+		return [{ json: response }];
 	}
 
 	/**
 	 * Add enrichment to a resource (campaign or lead list)
 	 */
 	static async addToResource(context: IExecuteFunctions, itemIndex: number): Promise<any> {
-		const resourceId = context.getNodeParameter('resourceId', itemIndex) as string;
-		const targetResourceId = context.getNodeParameter('targetResourceId', itemIndex) as string;
-		const targetResourceType = context.getNodeParameter('targetResourceType', itemIndex) as string;
+		const resourceIdLocator = context.getNodeParameter('resourceId', itemIndex) as any;
+		const resourceId = getResourceLocatorValue(resourceIdLocator);
+		const enrichmentTypes = context.getNodeParameter('enrichmentTypes', itemIndex, {}) as any;
+		const additionalOptions = context.getNodeParameter('additionalOptions', itemIndex, {}) as any;
 
-		const body: any = {
-			target_resource_id: targetResourceId,
-			target_resource_type: targetResourceType,
+		// Build enrichment payload from enrichment types
+		const enrichmentPayload: any = {
+			work_email_enrichment: enrichmentTypes.workEmailEnrichment ?? true,
+			fully_enriched_profile: enrichmentTypes.fullyEnrichedProfile ?? true,
+			email_verification: enrichmentTypes.emailVerification ?? false,
+			joblisting: enrichmentTypes.jobListing ?? true,
+			technologies: enrichmentTypes.technologies ?? true,
+			news: enrichmentTypes.news ?? true,
+			funding: enrichmentTypes.funding ?? true,
 		};
 
-		return await instantlyApiRequest.call(context, 'POST', `/api/v2/supersearch-enrichment/${resourceId}/add`, body);
+		const body: any = {
+			enrichment_payload: enrichmentPayload,
+		};
+
+		// Add additional options
+		if (additionalOptions.autoUpdate !== undefined) {
+			body.auto_update = additionalOptions.autoUpdate;
+		}
+		if (additionalOptions.skipRowsWithoutEmail !== undefined) {
+			body.skip_rows_without_email = additionalOptions.skipRowsWithoutEmail;
+		}
+		if (additionalOptions.limit) {
+			body.limit = additionalOptions.limit;
+		}
+
+		const response = await instantlyApiRequest.call(context, 'POST', `/api/v2/supersearch-enrichment/${resourceId}/add`, body);
+		return [{ json: response }];
 	}
 
 	/**
 	 * Run AI enrichment on existing data
 	 */
 	static async runAiEnrichment(context: IExecuteFunctions, itemIndex: number): Promise<any> {
-		const leadIds = context.getNodeParameter('leadIds', itemIndex) as string[];
-		const aiModel = context.getNodeParameter('aiModel', itemIndex) as string;
-		const aiPrompt = context.getNodeParameter('aiPrompt', itemIndex) as string;
+		const resourceId = context.getNodeParameter('resourceId', itemIndex) as string;
+		const outputColumn = context.getNodeParameter('outputColumn', itemIndex) as string;
+		const resourceType = context.getNodeParameter('resourceType', itemIndex) as number;
+		const modelVersion = context.getNodeParameter('modelVersion', itemIndex) as string;
 		const additionalSettings = context.getNodeParameter('additionalSettings', itemIndex, {}) as any;
 
 		const body: any = {
-			lead_ids: leadIds,
-			ai_model: aiModel,
-			ai_prompt: aiPrompt,
+			resource_id: resourceId,
+			output_column: outputColumn,
+			resource_type: resourceType,
+			model_version: modelVersion,
 		};
 
-		// Add additional AI settings
-		if (additionalSettings.temperature !== undefined) {
-			body.temperature = additionalSettings.temperature;
+		// Add optional AI settings per API specification
+		if (additionalSettings.inputColumns && additionalSettings.inputColumns.length > 0) {
+			body.input_columns = additionalSettings.inputColumns;
 		}
-		if (additionalSettings.maxTokens) {
-			body.max_tokens = additionalSettings.maxTokens;
+		if (additionalSettings.useInstantlyAccount !== undefined) {
+			body.use_instantly_account = additionalSettings.useInstantlyAccount;
 		}
-		if (additionalSettings.customInstructions) {
-			body.custom_instructions = additionalSettings.customInstructions;
+		if (additionalSettings.overwrite !== undefined) {
+			body.overwrite = additionalSettings.overwrite;
+		}
+		if (additionalSettings.autoUpdate !== undefined) {
+			body.auto_update = additionalSettings.autoUpdate;
+		}
+		if (additionalSettings.skipLeadsWithoutEmail !== undefined) {
+			body.skip_leads_without_email = additionalSettings.skipLeadsWithoutEmail;
+		}
+		if (additionalSettings.limit) {
+			body.limit = additionalSettings.limit;
+		}
+		if (additionalSettings.prompt) {
+			body.prompt = additionalSettings.prompt;
+		}
+		if (additionalSettings.templateId) {
+			body.template_id = additionalSettings.templateId;
 		}
 
-		return await instantlyApiRequest.call(context, 'POST', '/api/v2/supersearch-enrichment/ai', body);
-	}
-
-	/**
-	 * Get enrichment job status
-	 */
-	static async getJobStatus(context: IExecuteFunctions, itemIndex: number): Promise<any> {
-		const jobId = context.getNodeParameter('jobId', itemIndex) as string;
-		return await instantlyApiRequest.call(context, 'GET', `/api/v2/supersearch-enrichment/job/${jobId}`);
+		const response = await instantlyApiRequest.call(context, 'POST', '/api/v2/supersearch-enrichment/ai', body);
+		return [{ json: response }];
 	}
 
 	/**
 	 * Get enrichment history for a resource
 	 */
 	static async getHistory(context: IExecuteFunctions, itemIndex: number): Promise<any> {
-		const resourceId = context.getNodeParameter('resourceId', itemIndex) as string;
+		const resourceIdLocator = context.getNodeParameter('resourceId', itemIndex) as any;
+		const resourceId = getResourceLocatorValue(resourceIdLocator);
 		const returnAll = context.getNodeParameter('returnAll', itemIndex, false) as boolean;
 		const limit = context.getNodeParameter('limit', itemIndex, 50) as number;
 
@@ -168,11 +231,51 @@ export class SuperSearchEnrichmentOperations {
 		if (returnAll) {
 			// Get all history with pagination
 			const allHistory = await paginateInstantlyApi(context, `/api/v2/supersearch-enrichment/history/${resourceId}`, 'history');
-			return { items: allHistory };
+			return allHistory.map((item: any) => ({ json: item }));
 		} else {
 			// Get single page with specified limit
 			const queryParams = { limit };
-			return await instantlyApiRequest.call(context, 'GET', `/api/v2/supersearch-enrichment/history/${resourceId}`, {}, queryParams);
+			const response = await instantlyApiRequest.call(context, 'GET', `/api/v2/supersearch-enrichment/history/${resourceId}`, {}, queryParams);
+			return [{ json: response }];
+		}
+	}
+
+	/**
+	 * Get resources (campaigns and lists) for resource locator dropdown
+	 */
+	static async getResources(context: IExecuteFunctions): Promise<any[]> {
+		try {
+			// Get campaigns
+			const campaigns = await instantlyApiRequest.call(context, 'GET', '/api/v2/campaigns');
+			const campaignOptions = campaigns.map((campaign: any) => ({
+				name: `Campaign: ${campaign.name}`,
+				value: campaign.id,
+			}));
+
+			// Get lead lists
+			const leadLists = await instantlyApiRequest.call(context, 'GET', '/api/v2/lead-lists');
+			const listOptions = leadLists.map((list: any) => ({
+				name: `List: ${list.name}`,
+				value: list.id,
+			}));
+
+			return [...campaignOptions, ...listOptions];
+		} catch (error) {
+			// Return empty array if API calls fail
+			return [];
+		}
+	}
+
+	/**
+	 * Get enrichments for enrichment locator dropdown
+	 */
+	static async getEnrichments(context: IExecuteFunctions): Promise<any[]> {
+		try {
+			// Note: This would need to be implemented based on available API endpoints
+			// For now, return empty array as there's no direct "list enrichments" endpoint
+			return [];
+		} catch (error) {
+			return [];
 		}
 	}
 }

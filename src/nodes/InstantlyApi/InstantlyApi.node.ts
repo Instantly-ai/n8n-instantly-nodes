@@ -13,6 +13,7 @@ import {
 
 import { instantlyApiRequest } from '../generic.functions';
 import { OperationRouter } from './operations/OperationRouter';
+import { SuperSearchEnrichmentOperations } from './operations/SuperSearchEnrichmentOperations';
 import { ResourceType, OperationType } from './types/common';
 import { leadParameters } from './parameters/LeadParameters';
 import { campaignParameters } from './parameters/CampaignParameters';
@@ -258,7 +259,7 @@ async function getLeads(
 
 export class InstantlyApi implements INodeType {
 	description: INodeTypeDescription = {
-		displayName: 'Instantly API [SUPERSEARCH-TESTING]',
+		displayName: 'Instantly API [DEV]',
 		name: 'instantly',
 		icon: 'file:instantly.svg',
 		group: ['transform'],
@@ -398,6 +399,25 @@ export class InstantlyApi implements INodeType {
 			getCampaigns,
 			getEmailAccounts,
 			getLeads,
+			// SuperSearch Enrichment resource locators
+			async getResources(this: ILoadOptionsFunctions): Promise<INodeListSearchResult> {
+				const resources = await SuperSearchEnrichmentOperations.getResources(this as any);
+				return {
+					results: resources.map((resource: any) => ({
+						name: resource.name,
+						value: resource.value,
+					})),
+				};
+			},
+			async getEnrichments(this: ILoadOptionsFunctions): Promise<INodeListSearchResult> {
+				const enrichments = await SuperSearchEnrichmentOperations.getEnrichments(this as any);
+				return {
+					results: enrichments.map((enrichment: any) => ({
+						name: enrichment.name,
+						value: enrichment.value,
+					})),
+				};
+			},
 		},
 		loadOptions: {
 			// Load email accounts for multi-select dropdown

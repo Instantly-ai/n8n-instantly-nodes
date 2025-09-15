@@ -1,6 +1,6 @@
 {
-  "name": "n8n-nodes-instantly-supersearch-testing",
-  "version": "0.3.0-alpha.1",
+  "name": "n8n-nodes-instantly-dev",
+  "version": "0.3.0-alpha.6",
   "description": "SUPERSEARCH TESTING VERSION - Focus on SuperSearch Enrichment operations validation - n8n community node for Instantly API v2",
   "keywords": [
     "n8n-community-node-package",
@@ -30,10 +30,14 @@
     "lint": "n8n-node lint",
     "lint:fix": "n8n-node lint --fix",
     "release": "n8n-node release",
-    "prepublishOnly": "n8n-node prerelease"
+    "prepublishOnly": "npm run build"
   },
   "files": [
-    "dist"
+    "dist/src",
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.js.map",
+    "dist/index.d.ts.map"
   ],
   "n8n": {
     "n8nNodesApiVersion": 1,

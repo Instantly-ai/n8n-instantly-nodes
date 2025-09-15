@@ -158,8 +158,6 @@ export class OperationRouter {
 				return await SuperSearchEnrichmentOperations.addToResource(context, itemIndex);
 			case 'runAiEnrichment':
 				return await SuperSearchEnrichmentOperations.runAiEnrichment(context, itemIndex);
-			case 'getJobStatus':
-				return await SuperSearchEnrichmentOperations.getJobStatus(context, itemIndex);
 			case 'getHistory':
 				return await SuperSearchEnrichmentOperations.getHistory(context, itemIndex);
 			default:
